@@ -1,0 +1,5 @@
+images/
+plots/
+*.pyc
+venv/
+prompt.md

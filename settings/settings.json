@@ -1,0 +1,58 @@
+{
+  "plotter": {
+    "pen_pos_up": 100,
+    "pen_pos_down": 30,
+    "auto_rotate": false,
+    "speed_pendown": 25,
+    "speed_penup": 110,
+    "accel": 75
+  },
+  "algorithm": {
+    "current_algorithm": "fabric",
+    "waves": {
+      "output_width_inches": 4.5,
+      "output_height_inches": 6,
+      "margin_inches": 0.5,
+      "n_rows": 75,
+      "contrast_power": 1.5,
+      "amplitude_scale": 1,
+      "frequency_scale": 1.75,
+      "white_threshold": 200,
+      "use_serpentine": true,
+      "calc_dpi": 300,
+      "draw_direction": "horizontal",
+      "numColors": 1
+    },
+    "circles": {
+      "output_width_inches": 4.5,
+      "output_height_inches": 6.0,
+      "margin_inches": 0.5,
+      "n_circles": 200,
+      "contrast_power": 1.5,
+      "amplitude_scale": 10,
+      "frequency_scale": 10,
+      "white_threshold": 250,
+      "calc_dpi": 300,
+      "points_per_circle": 360
+    },
+    "fabric": {
+      "output_width_inches": 4.5,
+      "output_height_inches": 6.0,
+      "margin_inches": 0.5,
+      "calc_dpi": 300,
+      "grid_cols": 200,
+      "grid_rows": 100,
+      "displacement_mode": "random",
+      "noise_scale_x": 0.0015,
+      "noise_scale_y": 0.0005,
+      "noise_octaves": 4,
+      "noise_persistence": 0.3,
+      "noise_lacunarity": 2.0,
+      "displacement_magnitude": 500,
+      "ripple_frequency": 0.02,
+      "ripple_amplitude": 300,
+      "enable_weave": false,
+      "line_direction": "both"
+    }
+  }
+}
