@@ -78,7 +78,11 @@ class CommandLineInterface:
             
             # Dynamic menu text based on algorithm
             if self.algorithm_name == 'fabric':
-                print("1. Generate Plot (Procedural)")
+                displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
+                if displacement_mode == 'image':
+                    print("1. Generate Plot from Image")
+                else:
+                    print("1. Generate Plot (Procedural)")
             else:
                 print("1. Generate Plot from Image")
             
@@ -118,8 +122,14 @@ class CommandLineInterface:
         """Menu for generating plots."""
         # Check if current algorithm generates from scratch or needs an image
         if self.algorithm_name == 'fabric':
-            # Fabric generates procedurally, no input image needed
-            self._generate_plot_procedural()
+            # Check if fabric is in 'image' displacement mode
+            displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
+            if displacement_mode == 'image':
+                # Fabric in image mode - needs an image input
+                self._generate_plot_from_image()
+            else:
+                # Fabric generates procedurally, no input image needed
+                self._generate_plot_procedural()
         else:
             # Image-based algorithms
             self._generate_plot_from_image()

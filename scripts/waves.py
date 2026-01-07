@@ -467,7 +467,7 @@ class FabricGenerator:
         'calc_dpi': 300,
         'grid_cols': 150,
         'grid_rows': 200,
-        'displacement_mode': 'random',  # 'random' or 'ripples'
+        'displacement_mode': 'random',  # 'random', 'ripples', or 'image'
         'noise_scale_x': 0.002,
         'noise_scale_y': 0.002,
         'noise_octaves': 4,
@@ -476,6 +476,7 @@ class FabricGenerator:
         'displacement_magnitude': 500,
         'ripple_frequency': 0.015,  # Frequency of ripples (smaller = wider ripples)
         'ripple_amplitude': 400,   # Amplitude of ripple displacement
+        'image_displacement_scale': 500,  # Scale factor for image-based displacement
         'enable_weave': True,  # Enable the over/under weave effect
         'line_direction': 'horizontal',  # 'horizontal', 'vertical', or 'both'
     }
@@ -537,6 +538,7 @@ class FabricGenerator:
         displacement_magnitude = self.config['displacement_magnitude']
         ripple_frequency = self.config.get('ripple_frequency', 0.02)
         ripple_amplitude = self.config.get('ripple_amplitude', 300)
+        image_displacement_scale = self.config.get('image_displacement_scale', 500)
         enable_weave = self.config['enable_weave']
         line_direction = self.config.get('line_direction', 'horizontal')  # 'horizontal', 'vertical', or 'both'
         
@@ -564,6 +566,16 @@ class FabricGenerator:
             # Pick a random center point for the ripples
             center_x = random.uniform(0.2 * drawable_width_px, 0.8 * drawable_width_px)
             center_y = random.uniform(0.2 * drawable_height_px, 0.8 * drawable_height_px)
+
+            # Use Perlin noise to warp ripple spacing/phase so rings aren't perfectly periodic.
+            # This keeps the overall radial "push/pull" feel, but breaks up the fixed intervals.
+            # Default warp is a fraction of the ripple wavelength (≈ 2π / ripple_frequency)
+            # so you still get visible irregularity even if ripple_amplitude is small.
+            default_ripple_noise_warp = (0.7 * math.pi) / max(float(ripple_frequency), 1e-9)
+            ripple_noise_warp = self.config.get('ripple_noise_warp', default_ripple_noise_warp)
+            ripple_frequency_jitter = self.config.get('ripple_frequency_jitter', 0.35)
+            ripple_amplitude_jitter = self.config.get('ripple_amplitude_jitter', 0.25)
+            ripple_seed = random.randint(0, 1000)
             
             # Calculate distance from center for each grid point
             for i in range(grid_rows):
@@ -572,14 +584,31 @@ class FabricGenerator:
                     dx = X[i, j] - center_x
                     dy = Y[i, j] - center_y
                     distance = np.sqrt(dx**2 + dy**2)
-                    
-                    # Create ripple effect using sine wave based on distance
-                    # The sine creates the concentric wave pattern
-                    ripple = np.sin(distance * ripple_frequency)
+
+                    # Perlin noise value in [-1, 1] for this point.
+                    # Reuse the configured noise parameters to control "organic" variation.
+                    n = noise.pnoise2(
+                        X[i, j] * noise_scale_x,
+                        Y[i, j] * noise_scale_y,
+                        octaves=noise_octaves,
+                        persistence=noise_persistence,
+                        lacunarity=noise_lacunarity,
+                        repeatx=drawable_width_px,
+                        repeaty=drawable_height_px,
+                        base=ripple_seed,
+                    )
+
+                    # Warp the ripple phase and slightly vary local frequency/amplitude.
+                    warped_distance = distance + (n * ripple_noise_warp)
+                    local_frequency = ripple_frequency * (1.0 + n * ripple_frequency_jitter)
+                    local_amplitude = 1.0 + n * ripple_amplitude_jitter
+
+                    # Sine still provides a ripple structure, but noise breaks uniform spacing.
+                    ripple = np.sin(warped_distance * local_frequency) * local_amplitude
                     
                     # Apply radial displacement - pushing outward/inward from center
                     # This creates spherical ripples emanating from the center point
-                    if distance > 0:
+                    if distance > 1e-9:
                         # Normalize direction vector (radial direction)
                         dx_norm = dx / distance
                         dy_norm = dy / distance
@@ -591,6 +620,59 @@ class FabricGenerator:
             # Scale by ripple amplitude
             X_distorted = X + noised_X * ripple_amplitude
             Y_distorted = Y + noised_Y * ripple_amplitude
+        
+        elif displacement_mode == 'image':
+            # Image-based displacement mode
+            if image_path is None:
+                raise ValueError("Image path is required for 'image' displacement mode")
+            
+            # Load and process the image
+            from PIL import Image, ImageOps
+            
+            img = Image.open(image_path)
+            img = ImageOps.grayscale(img)
+            
+            # Resize image to match grid dimensions for sampling
+            img_resized = img.resize((grid_cols, grid_rows), Image.LANCZOS)
+            
+            # Convert to numpy array (values 0-255)
+            img_array = np.array(img_resized)
+            
+            # Normalize to -1 to 1 range (darker = negative displacement, lighter = positive)
+            img_normalized = (img_array / 255.0) * 2 - 1
+            
+            # Create displacement based on image brightness
+            # We'll use the brightness to determine displacement magnitude
+            for i in range(grid_rows):
+                for j in range(grid_cols):
+                    # Get brightness value at this grid point
+                    brightness = img_normalized[i, j]
+                    
+                    # Calculate gradient-based displacement direction
+                    # This creates a 3D-like effect where bright areas push out
+                    # and dark areas push in
+                    
+                    # Calculate local gradient (if not at edge)
+                    grad_x = 0
+                    grad_y = 0
+                    
+                    if j > 0 and j < grid_cols - 1:
+                        grad_x = (img_normalized[i, min(j+1, grid_cols-1)] - 
+                                 img_normalized[i, max(j-1, 0)]) / 2
+                    
+                    if i > 0 and i < grid_rows - 1:
+                        grad_y = (img_normalized[min(i+1, grid_rows-1), j] - 
+                                 img_normalized[max(i-1, 0), j]) / 2
+                    
+                    # Use both brightness and gradient for displacement
+                    # Brightness creates the overall depth
+                    # Gradient creates the directional flow
+                    noised_X[i, j] = grad_x + brightness * 0.3
+                    noised_Y[i, j] = grad_y + brightness * 0.3
+            
+            # Scale by image displacement magnitude
+            X_distorted = X + noised_X * image_displacement_scale
+            Y_distorted = Y + noised_Y * image_displacement_scale
         
         else:  # displacement_mode == 'random' (default)
             # Generate Perlin noise for displacement
