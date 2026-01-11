@@ -8,9 +8,10 @@ This script initializes all components and launches the interface.
 import sys
 import os
 
-# Ensure 'scripts' directory is importable
+# Ensure 'scripts' directory is importable (algorithms is a package)
 project_dir = os.path.dirname(os.path.abspath(__file__))
 scripts_dir = os.path.join(project_dir, "scripts")
+
 if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
 

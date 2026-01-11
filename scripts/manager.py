@@ -1,28 +1,9 @@
-"""
-manager.py - File and database management
-
-This module handles all file system operations including:
-- Managing images and plots directories
-- Creating and organizing plot outputs
-- Listing available images and plots
-"""
-
 import os
 import shutil
 from typing import List, Dict, Optional
 from pathlib import Path
 
-
 class DatabaseManager:
-    """
-    Manages the database directory structure and file operations.
-    
-    Directory structure:
-    database/
-        images/      - Input images
-        plots/       - Generated plots (each in subdirectory)
-    """
-    
     def __init__(self, base_path: str = "database"):
         """
         Initialize the database manager.

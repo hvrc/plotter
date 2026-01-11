@@ -3,3 +3,5 @@ plots/
 *.pyc
 venv/
 prompt.md
+__pycache__
+structure.md

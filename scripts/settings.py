@@ -74,8 +74,60 @@ class SettingsManager:
                 'displacement_magnitude': 500,
                 'ripple_frequency': 0.015,
                 'ripple_amplitude': 400,
+                'ripple_centers': 1,
+                'ripple_centers_locations': [],
                 'enable_weave': True,
                 'line_direction': 'horizontal'
+            },
+            'fish': {
+                'output_width_inches': 4.5,
+                'output_height_inches': 6.0,
+                'margin_inches': 0.125,
+                'calc_dpi': 300,
+                'radius_fraction': 0.9,
+                'points_per_circle': 720,
+                'stroke_width': 0.5
+            },
+            'sphere': {
+                'output_width_inches': 6.0,
+                'output_height_inches': 6.0,
+                'margin_inches': 0.5,
+                'calc_dpi': 300,
+                'sphere_radius': 0.8,
+                'rotation_x': 20,
+                'rotation_y': 20,
+                'pattern': 'flow',
+                'num_latitude_lines': 12,
+                'num_longitude_lines': 16,
+                'num_flow_lines': 20,
+                'spiral_revolutions': 8,
+                'points_per_curve': 200,
+                'stroke_width': 0.5,
+                'show_hidden_lines': False,
+                'num_pole_circles': 5,
+                'pole_circle_spacing': 10
+            },
+            'terrain': {
+                'output_width_inches': 6.0,
+                'output_height_inches': 6.0,
+                'margin_inches': 0.5,
+                'calc_dpi': 300,
+                'grid_resolution_x': 60,
+                'grid_resolution_z': 60,
+                'cube_height': 0.3,
+                'terrain_amplitude': 1.0,
+                'noise_scale': 0.08,
+                'noise_octaves': 4,
+                'elevation_mode': 'perlin',
+                'perspective_strength': 0.6,
+                'rotation_x': 25,
+                'rotation_z': 35,
+                'cutout_front': True,
+                'cutout_side': True,
+                'line_density': 1.0,
+                'smooth_terrain': True,
+                'terrain_center_x': 0.5,
+                'terrain_center_z': 0.5
             }
         }
     }
@@ -125,8 +177,54 @@ class SettingsManager:
         else:
             print(f"No settings file found. Creating default settings at {self.settings_path}")
             self.save()
+
+        # Normalize/validate algorithm selection (handles typos like 'cirlces').
+        self._validate_current_algorithm(auto_save=True)
         
         return self._deep_copy(self.settings)
+
+    def _validate_current_algorithm(self, auto_save: bool = True):
+        """Ensure current_algorithm is valid; fix common typos and fall back safely."""
+        algo_settings = self.settings.get('algorithm', {})
+        current = str(algo_settings.get('current_algorithm', '') or '').strip().lower()
+
+        # Common aliases/typos
+        aliases = {
+            'cirlces': 'circles',
+            'circle': 'circles',
+            'spirals': 'spiral',
+        }
+        if current in aliases:
+            current = aliases[current]
+
+        try:
+            from algorithms import get_algorithm_names
+
+            available = set(name.lower() for name in get_algorithm_names())
+            if current not in available:
+                # Prefer waves if available; otherwise choose first available.
+                if 'waves' in available:
+                    fixed = 'waves'
+                elif 'circles' in available:
+                    fixed = 'circles'
+                else:
+                    fixed = sorted(available)[0] if available else 'waves'
+
+                if fixed != current:
+                    print(f"Warning: Invalid current algorithm '{algo_settings.get('current_algorithm')}'. Using '{fixed}'.")
+                    self.settings['algorithm']['current_algorithm'] = fixed
+                    if auto_save:
+                        self.save()
+            else:
+                # Write back normalized casing if necessary
+                if algo_settings.get('current_algorithm') != current:
+                    self.settings['algorithm']['current_algorithm'] = current
+                    if auto_save:
+                        self.save()
+        except Exception:
+            # If the algorithms package can't be imported for any reason,
+            # keep the setting as-is to avoid breaking startup.
+            return
     
     def _merge_settings(self, default: Dict, loaded: Dict):
         """Recursively merge loaded settings into defaults."""

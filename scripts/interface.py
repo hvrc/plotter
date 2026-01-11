@@ -1,37 +1,16 @@
-"""
-interface.py - Command line interface
-
-This module provides the CLI for the plotter application.
-It's designed to be replaceable with other interface types (GUI, web, etc.)
-"""
-
 import sys
 from typing import Optional, Dict, Any
 from manager import DatabaseManager
 from plotter import PlotterController
 from settings import SettingsManager
-from waves import get_algorithm, list_algorithms
 
+from algorithms import get_algorithm, list_algorithms
 
 class CommandLineInterface:
-    """
-    Command-line interface for the plotter application.
-    
-    This interface is designed to be one of potentially many interface types.
-    Other interfaces (GUI, web) could be implemented with the same backend.
-    """
-    
     def __init__(self, db_manager: DatabaseManager, 
                  plotter: PlotterController,
                  settings_manager: SettingsManager):
-        """
-        Initialize the CLI.
-        
-        Args:
-            db_manager: Database manager instance
-            plotter: Plotter controller instance
-            settings_manager: Centralized settings manager
-        """
+
         self.db = db_manager
         self.plotter = plotter
         self.settings = settings_manager
@@ -77,9 +56,9 @@ class CommandLineInterface:
             self.print_header("PLOT GENERATOR - MAIN MENU")
             
             # Dynamic menu text based on algorithm
-            if self.algorithm_name == 'fabric':
+            if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
                 displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
-                if displacement_mode == 'image':
+                if self.algorithm_name == 'fabric' and displacement_mode == 'image':
                     print("1. Generate Plot from Image")
                 else:
                     print("1. Generate Plot (Procedural)")
@@ -121,10 +100,10 @@ class CommandLineInterface:
     def generate_plot_menu(self):
         """Menu for generating plots."""
         # Check if current algorithm generates from scratch or needs an image
-        if self.algorithm_name == 'fabric':
+        if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
             # Check if fabric is in 'image' displacement mode
             displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
-            if displacement_mode == 'image':
+            if self.algorithm_name == 'fabric' and displacement_mode == 'image':
                 # Fabric in image mode - needs an image input
                 self._generate_plot_from_image()
             else:
@@ -171,9 +150,9 @@ class CommandLineInterface:
         self.print_header("GENERATE PROCEDURAL PLOT")
         
         # Generate name based on algorithm
-        # For fabric, use consistent name to replace previous versions
-        if self.algorithm_name == 'fabric':
-            base_name = 'fabric'
+        # For fabric, fish, sphere, spiral, features, and terrain use consistent name to replace previous versions
+        if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
+            base_name = 'spirals' if self.algorithm_name == 'spiral' else self.algorithm_name
         else:
             # For other algorithms, use timestamp for unique names
             timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -476,7 +455,9 @@ class CommandLineInterface:
         print("1. waves - Wave-based plot generation")
         print("2. circles - Concentric circles with squiggles")
         print("3. fabric - Procedurally generated fabric texture")
-        print("4. Back")
+        print("4. fish - Single centered circle")
+        print("5. sphere - 3D sphere with flow lines")
+        print("6. Back")
         
         choice = self.get_number("\nSelect algorithm")
         
@@ -496,6 +477,18 @@ class CommandLineInterface:
             self.algorithm_name = 'fabric'
             self.settings.set_current_algorithm('fabric')
             self.algorithm_config = self.settings.get_algorithm_settings('fabric')
+            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
+            self.pause()
+        elif choice == 4:
+            self.algorithm_name = 'fish'
+            self.settings.set_current_algorithm('fish')
+            self.algorithm_config = self.settings.get_algorithm_settings('fish')
+            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
+            self.pause()
+        elif choice == 5:
+            self.algorithm_name = 'sphere'
+            self.settings.set_current_algorithm('sphere')
+            self.algorithm_config = self.settings.get_algorithm_settings('sphere')
             print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
             self.pause()
     
