@@ -8,7 +8,6 @@ This module handles all application settings including:
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -18,135 +17,97 @@ class SettingsManager:
     Manages all application settings with automatic persistence.
     
     Settings are stored in settings/settings.json
+    Default settings live in settings/default.json
     """
-    
-    # Default settings for all components
-    DEFAULT_SETTINGS = {
-        'plotter': {
-            'pen_pos_up': 100,
-            'pen_pos_down': 30,
-            'auto_rotate': False,
-            'speed_pendown': 25,
-            'speed_penup': 75,
-            'accel': 75
-        },
-        'algorithm': {
-            'current_algorithm': 'waves',
-            'waves': {
-                'output_width_inches': 4.5,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.125,
-                'n_rows': 100,
-                'contrast_power': 1.5,
-                'amplitude_scale': 1,
-                'frequency_scale': 1.75,
-                'white_threshold': 250,
-                'use_serpentine': False,
-                'calc_dpi': 300,
-                'draw_direction': 'horizontal',
-                'numColors': 1
-            },
-            'circles': {
-                'output_width_inches': 4.5,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.125,
-                'n_circles': 80,
-                'contrast_power': 1.5,
-                'amplitude_scale': 1,
-                'frequency_scale': 2.0,
-                'white_threshold': 250,
-                'calc_dpi': 300,
-                'points_per_circle': 360
-            },
-            'fabric': {
-                'output_width_inches': 4.5,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.125,
-                'calc_dpi': 300,
-                'grid_cols': 150,
-                'grid_rows': 200,
-                'displacement_mode': 'random',
-                'noise_scale_x': 0.002,
-                'noise_scale_y': 0.002,
-                'noise_octaves': 4,
-                'noise_persistence': 0.5,
-                'noise_lacunarity': 6.0,
-                'displacement_magnitude': 500,
-                'ripple_frequency': 0.015,
-                'ripple_amplitude': 400,
-                'ripple_centers': 1,
-                'ripple_centers_locations': [],
-                'enable_weave': True,
-                'line_direction': 'horizontal'
-            },
-            'fish': {
-                'output_width_inches': 4.5,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.125,
-                'calc_dpi': 300,
-                'radius_fraction': 0.9,
-                'points_per_circle': 720,
-                'stroke_width': 0.5
-            },
-            'sphere': {
-                'output_width_inches': 6.0,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.5,
-                'calc_dpi': 300,
-                'sphere_radius': 0.8,
-                'rotation_x': 20,
-                'rotation_y': 20,
-                'pattern': 'flow',
-                'num_latitude_lines': 12,
-                'num_longitude_lines': 16,
-                'num_flow_lines': 20,
-                'spiral_revolutions': 8,
-                'points_per_curve': 200,
-                'stroke_width': 0.5,
-                'show_hidden_lines': False,
-                'num_pole_circles': 5,
-                'pole_circle_spacing': 10
-            },
-            'terrain': {
-                'output_width_inches': 6.0,
-                'output_height_inches': 6.0,
-                'margin_inches': 0.5,
-                'calc_dpi': 300,
-                'grid_resolution_x': 60,
-                'grid_resolution_z': 60,
-                'cube_height': 0.3,
-                'terrain_amplitude': 1.0,
-                'noise_scale': 0.08,
-                'noise_octaves': 4,
-                'elevation_mode': 'perlin',
-                'perspective_strength': 0.6,
-                'rotation_x': 25,
-                'rotation_z': 35,
-                'cutout_front': True,
-                'cutout_side': True,
-                'line_density': 1.0,
-                'smooth_terrain': True,
-                'terrain_center_x': 0.5,
-                'terrain_center_z': 0.5
-            }
-        }
-    }
-    
-    def __init__(self, settings_path: str = "settings/settings.json"):
+
+    def __init__(
+        self,
+        settings_path: str = "settings/settings.json",
+        defaults_path: Optional[str] = None,
+    ):
         """
         Initialize settings manager.
         
         Args:
             settings_path: Path to settings file
+            defaults_path: Path to defaults file (default: settings/default.json)
         """
         self.settings_path = Path(settings_path)
-        self.settings = self._deep_copy(self.DEFAULT_SETTINGS)
+        self.defaults_path = Path(defaults_path) if defaults_path else (self.settings_path.parent / "default.json")
+        self.defaults = self._load_defaults()
+        self.settings = self._deep_copy(self.defaults)
         
         # Ensure settings directory exists
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.defaults_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Load existing settings
         self.load()
+
+    def _read_json(self, path: Path) -> Optional[Dict[str, Any]]:
+        if not path.exists():
+            return None
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            print(f"Warning: Could not read JSON from {path}: {e}")
+            return None
+
+    def _write_json(self, path: Path, data: Dict[str, Any]) -> bool:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error writing JSON to {path}: {e}")
+            return False
+
+    def _generate_defaults(self) -> Dict[str, Any]:
+        """Generate a reasonable defaults file from algorithm/plotter defaults."""
+        defaults: Dict[str, Any] = {
+            'plotter': {},
+            'algorithm': {
+                'current_algorithm': 'waves'
+            }
+        }
+
+        try:
+            from plotter import PlotterController
+
+            defaults['plotter'] = PlotterController.DEFAULT_CONFIG.copy()
+        except Exception:
+            defaults['plotter'] = {}
+
+        try:
+            from algorithms import get_algorithm_names, get_algorithm
+
+            algo_names = get_algorithm_names()
+            available = [name.lower() for name in algo_names]
+            if available:
+                defaults['algorithm']['current_algorithm'] = 'waves' if 'waves' in available else available[0]
+
+            for name in algo_names:
+                try:
+                    algo = get_algorithm(name)
+                    defaults['algorithm'][name] = getattr(algo, 'DEFAULT_CONFIG', algo.get_config())
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return defaults
+
+    def _load_defaults(self) -> Dict[str, Any]:
+        defaults = self._read_json(self.defaults_path)
+        if defaults:
+            return defaults
+
+        generated = self._generate_defaults()
+        self._write_json(self.defaults_path, generated)
+        return generated
     
     def _deep_copy(self, obj: Any) -> Any:
         """Deep copy a nested dict structure."""
@@ -164,18 +125,13 @@ class SettingsManager:
         Returns:
             Loaded settings dict
         """
-        if self.settings_path.exists():
-            try:
-                with open(self.settings_path, 'r') as f:
-                    loaded = json.load(f)
-                    # Merge loaded settings with defaults (in case new settings were added)
-                    self._merge_settings(self.settings, loaded)
-                    print(f"Settings loaded from {self.settings_path}")
-            except Exception as e:
-                print(f"Warning: Could not load settings from {self.settings_path}: {e}")
-                print("Using default settings")
+        loaded = self._read_json(self.settings_path)
+        if loaded:
+            # Merge loaded settings with defaults (in case new settings were added)
+            self._merge_settings(self.settings, loaded)
+            print(f"Settings loaded from {self.settings_path}")
         else:
-            print(f"No settings file found. Creating default settings at {self.settings_path}")
+            print(f"No settings file found. Creating settings at {self.settings_path}")
             self.save()
 
         # Normalize/validate algorithm selection (handles typos like 'cirlces').
@@ -241,13 +197,7 @@ class SettingsManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            with open(self.settings_path, 'w') as f:
-                json.dump(self.settings, f, indent=2)
-            return True
-        except Exception as e:
-            print(f"Error saving settings to {self.settings_path}: {e}")
-            return False
+        return self._write_json(self.settings_path, self.settings)
     
     # ==========================================
     # PLOTTER SETTINGS
@@ -379,7 +329,8 @@ class SettingsManager:
         Args:
             auto_save: Automatically save to file (default: True)
         """
-        self.settings = self._deep_copy(self.DEFAULT_SETTINGS)
+        self.defaults = self._load_defaults()
+        self.settings = self._deep_copy(self.defaults)
         if auto_save:
             self.save()
     
@@ -394,7 +345,7 @@ class SettingsManager:
             True if successful
         """
         try:
-            with open(export_path, 'w') as f:
+            with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2)
             print(f"Settings exported to {export_path}")
             return True
@@ -414,9 +365,11 @@ class SettingsManager:
             True if successful
         """
         try:
-            with open(import_path, 'r') as f:
+            with open(import_path, 'r', encoding='utf-8') as f:
                 imported = json.load(f)
-                self.settings = self._deep_copy(self.DEFAULT_SETTINGS)
+            self.defaults = self._load_defaults()
+            self.settings = self._deep_copy(self.defaults)
+            if isinstance(imported, dict):
                 self._merge_settings(self.settings, imported)
                 if auto_save:
                     self.save()

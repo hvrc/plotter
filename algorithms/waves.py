@@ -1,29 +1,23 @@
-"""
-waves.py - Wave-based plot generation algorithm
+"""algorithms.waves
+
+Wave-based plot generation algorithm.
 
 Converts images into plottable SVG paths using sine wave modulation.
 Brightness controls wave amplitude and frequency.
 """
 
 import math
-from PIL import Image, ImageOps, ImageDraw
-from typing import List, Tuple, Dict, Any, Union
 from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
+
+from PIL import Image, ImageDraw, ImageOps
 
 from .base import PlotAlgorithm
 
+
 class WavesGenerator(PlotAlgorithm):
-    """
-    Generates wave-based plots from images.
-    
-    This class implements the algorithm interface that all plot generators should follow:
-    - __init__ with config dict
-    - generate_paths(image_path) -> List of path segments
-    - get_config() -> current configuration
-    - set_config(config) -> update configuration
-    """
-    
-    # Default configuration
+    """Generates wave-based plots from images."""
+
     DEFAULT_CONFIG = {
         'output_width_inches': 4.5,
         'output_height_inches': 6.0,
@@ -39,20 +33,6 @@ class WavesGenerator(PlotAlgorithm):
         'numColors': 1  # Number of dominant colors (1 = single black layer)
     }
     
-    def __init__(self, config: Dict[str, Any] = None):
-        """Initialize with optional configuration override."""
-        self.config = self.DEFAULT_CONFIG.copy()
-        if config:
-            self.config.update(config)
-    
-    def get_config(self) -> Dict[str, Any]:
-        """Return current configuration."""
-        return self.config.copy()
-    
-    def set_config(self, config: Dict[str, Any]):
-        """Update configuration."""
-        self.config.update(config)
-    
     def get_algorithm_name(self) -> str:
         """Return the algorithm name."""
         return "waves"
@@ -63,6 +43,38 @@ class WavesGenerator(PlotAlgorithm):
 
     def is_procedural(self) -> bool:
         return False
+
+    @staticmethod
+    def _compute_canvas_px(
+        *,
+        output_width_inches: float,
+        output_height_inches: float,
+        margin_inches: float,
+        dpi: float,
+    ) -> Tuple[int, int, int, int, int]:
+        total_width_px = int(output_width_inches * dpi)
+        total_height_px = int(output_height_inches * dpi)
+        margin_px = int(margin_inches * dpi)
+
+        drawable_width_px = total_width_px - (2 * margin_px)
+        drawable_height_px = total_height_px - (2 * margin_px)
+        if drawable_width_px <= 0 or drawable_height_px <= 0:
+            raise ValueError("Margins are larger than paper size")
+
+        return total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px
+
+    @staticmethod
+    def _apply_serpentine(segments: List[List[Tuple[float, float]]], index: int, use_serpentine: bool) -> None:
+        if use_serpentine and (index % 2 == 1):
+            segments.reverse()
+            for seg in segments:
+                seg.reverse()
+
+    @staticmethod
+    def _path_to_svg_d(path: List[Tuple[float, float]]) -> str:
+        return f"M {path[0][0]:.2f} {path[0][1]:.2f} " + ''.join(
+            f"L {x:.2f} {y:.2f} " for x, y in path[1:]
+        )
     
     def _quantize_colors(self, image: Image.Image, num_colors: int) -> Tuple[Image.Image, List[Tuple[int, int, int]]]:
         """
@@ -124,7 +136,7 @@ class WavesGenerator(PlotAlgorithm):
         mask.putdata(out)
         return mask
     
-    def generate_paths(self, image_path: str) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    def generate_paths(self, image_path: Optional[str] = None) -> Tuple[Any, Dict[str, Any]]:
         """
         Generate plot paths from an image.
         
@@ -136,35 +148,33 @@ class WavesGenerator(PlotAlgorithm):
             - paths: List of path segments OR dict of {color: paths} if numColors > 1
             - metadata: Dict with dimensions and other info for SVG generation
         """
+        if not image_path:
+            raise ValueError("image_path is required")
         try:
             original_img = Image.open(image_path)
         except IOError as e:
             raise ValueError(f"Could not open image: {image_path}") from e
-        
-        # Extract config
-        calc_dpi = self.config['calc_dpi']
-        output_width_inches = self.config['output_width_inches']
-        output_height_inches = self.config['output_height_inches']
-        margin_inches = self.config['margin_inches']
-        n_rows = self.config['n_rows']
-        contrast_power = self.config['contrast_power']
-        amplitude_scale = self.config['amplitude_scale']
-        frequency_scale = self.config['frequency_scale']
-        white_threshold = self.config['white_threshold']
-        use_serpentine = self.config['use_serpentine']
-        draw_direction = self.config.get('draw_direction', 'horizontal')
-        num_colors = self.config.get('numColors', 1)
-        
-        # Calculate dimensions
-        total_width_px = int(output_width_inches * calc_dpi)
-        total_height_px = int(output_height_inches * calc_dpi)
-        margin_px = int(margin_inches * calc_dpi)
-        
-        drawable_width_px = total_width_px - (2 * margin_px)
-        drawable_height_px = total_height_px - (2 * margin_px)
-        
-        if drawable_width_px <= 0 or drawable_height_px <= 0:
-            raise ValueError("Margins are larger than paper size")
+
+        config = self.config
+        dpi = float(config['calc_dpi'])
+        output_width_inches = float(config['output_width_inches'])
+        output_height_inches = float(config['output_height_inches'])
+        margin_inches = float(config['margin_inches'])
+        n_rows = int(config['n_rows'])
+        contrast_power = float(config['contrast_power'])
+        amplitude_scale = float(config['amplitude_scale'])
+        frequency_scale = float(config['frequency_scale'])
+        white_threshold = int(config['white_threshold'])
+        use_serpentine = bool(config['use_serpentine'])
+        draw_direction = str(config.get('draw_direction', 'horizontal') or 'horizontal').lower()
+        num_colors = int(config.get('numColors', 1) or 1)
+
+        total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px = self._compute_canvas_px(
+            output_width_inches=output_width_inches,
+            output_height_inches=output_height_inches,
+            margin_inches=margin_inches,
+            dpi=dpi,
+        )
         
         # Handle color-aware generation
         if num_colors > 1:
@@ -179,7 +189,7 @@ class WavesGenerator(PlotAlgorithm):
             
             # Generate paths for each color
             color_paths = {}
-            for i, color in enumerate(dominant_colors):
+            for color in dominant_colors:
                 # Create mask for this color
                 mask = self._create_color_mask(quantized_img, color, tolerance=15)
                 
@@ -242,8 +252,7 @@ class WavesGenerator(PlotAlgorithm):
         
         return all_paths, metadata
     
-    def generate_svg(self, paths: List[List[Tuple[float, float]]], 
-                     metadata: Dict[str, Any]) -> str:
+    def generate_svg(self, paths: Any, metadata: Dict[str, Any]) -> Any:
         """
         Generate SVG content from paths.
         
@@ -257,14 +266,11 @@ class WavesGenerator(PlotAlgorithm):
         num_colors = metadata.get('numColors', 1)
         
         if num_colors > 1 and isinstance(paths, dict):
-            # Multi-color mode: return dict of SVGs
-            svg_dict = {}
-            for color, color_paths in paths.items():
-                svg_content = self._generate_single_svg(color_paths, metadata, color)
-                svg_dict[color] = svg_content
-            return svg_dict
+            return {
+                color: self._generate_single_svg(color_paths, metadata, color)
+                for color, color_paths in paths.items()
+            }
         else:
-            # Single color mode: return single SVG
             return self._generate_single_svg(paths, metadata, (0, 0, 0))
     
     def _generate_single_svg(self, paths: List[List[Tuple[float, float]]], 
@@ -299,9 +305,7 @@ class WavesGenerator(PlotAlgorithm):
         for path in paths:
             if len(path) < 2:
                 continue
-            d_str = f"M {path[0][0]:.2f} {path[0][1]:.2f} "
-            for p in path[1:]:
-                d_str += f"L {p[0]:.2f} {p[1]:.2f} "
+            d_str = self._path_to_svg_d(path)
             svg_lines.append(
                 f'<path d="{d_str}" fill="none" stroke="{color_hex}" stroke-width="2" />\n'
             )
@@ -309,10 +313,19 @@ class WavesGenerator(PlotAlgorithm):
         svg_lines.append('</svg>')
         return ''.join(svg_lines)
     
-    def _generate_horizontal_paths(self, processed_img, n_rows, drawable_width_px, 
-                                   drawable_height_px, margin_px, contrast_power, 
-                                   amplitude_scale, frequency_scale, white_threshold, 
-                                   use_serpentine) -> List[List[Tuple[float, float]]]:
+    def _generate_horizontal_paths(
+        self,
+        processed_img: Image.Image,
+        n_rows: int,
+        drawable_width_px: int,
+        drawable_height_px: int,
+        margin_px: int,
+        contrast_power: float,
+        amplitude_scale: float,
+        frequency_scale: float,
+        white_threshold: int,
+        use_serpentine: bool,
+    ) -> List[List[Tuple[float, float]]]:
         """Generate paths drawing from left to right (horizontal)."""
         sample_img = processed_img.resize(
             (drawable_width_px, n_rows), 
@@ -358,20 +371,26 @@ class WavesGenerator(PlotAlgorithm):
             
             if len(current_segment) > 1:
                 row_segments.append(current_segment)
-            
-            if use_serpentine and (r % 2 == 1):
-                row_segments.reverse()
-                for seg in row_segments:
-                    seg.reverse()
+
+            self._apply_serpentine(row_segments, r, use_serpentine)
             
             all_paths.extend(row_segments)
         
         return all_paths
     
-    def _generate_vertical_paths(self, processed_img, n_rows, drawable_width_px, 
-                                drawable_height_px, margin_px, contrast_power, 
-                                amplitude_scale, frequency_scale, white_threshold, 
-                                use_serpentine) -> List[List[Tuple[float, float]]]:
+    def _generate_vertical_paths(
+        self,
+        processed_img: Image.Image,
+        n_rows: int,
+        drawable_width_px: int,
+        drawable_height_px: int,
+        margin_px: int,
+        contrast_power: float,
+        amplitude_scale: float,
+        frequency_scale: float,
+        white_threshold: int,
+        use_serpentine: bool,
+    ) -> List[List[Tuple[float, float]]]:
         """Generate paths drawing from top to bottom (vertical)."""
         sample_img = processed_img.resize(
             (n_rows, drawable_height_px), 
@@ -417,18 +436,14 @@ class WavesGenerator(PlotAlgorithm):
             
             if len(current_segment) > 1:
                 col_segments.append(current_segment)
-            
-            if use_serpentine and (c % 2 == 1):
-                col_segments.reverse()
-                for seg in col_segments:
-                    seg.reverse()
+
+            self._apply_serpentine(col_segments, c, use_serpentine)
             
             all_paths.extend(col_segments)
         
         return all_paths
     
-    def generate_preview(self, paths: List[List[Tuple[float, float]]], 
-                        metadata: Dict[str, Any]) -> Image.Image:
+    def generate_preview(self, paths: Any, metadata: Dict[str, Any]) -> Image.Image:
         """
         Generate a preview PNG from paths.
         

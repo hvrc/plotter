@@ -1,11 +1,12 @@
-"""
-circles.py - Concentric circles plot generation
+"""algorithms.circles
+
+Concentric circles plot generation.
 
 Generates concentric circles with squiggles based on image brightness.
 """
 
 import math
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageOps, ImageDraw
 
@@ -31,22 +32,8 @@ class CirclesGenerator(PlotAlgorithm):
         'frequency_scale': 2.0,
         'white_threshold': 250,
         'calc_dpi': 300,
-        'points_per_circle': 360  # Number of sample points per circle
+        'points_per_circle': 360,  # Number of sample points per circle
     }
-    
-    def __init__(self, config: Dict[str, Any] = None):
-        """Initialize with optional configuration override."""
-        self.config = self.DEFAULT_CONFIG.copy()
-        if config:
-            self.config.update(config)
-    
-    def get_config(self) -> Dict[str, Any]:
-        """Return current configuration."""
-        return self.config.copy()
-    
-    def set_config(self, config: Dict[str, Any]):
-        """Update configuration."""
-        self.config.update(config)
     
     def get_algorithm_name(self) -> str:
         """Return the algorithm name."""
@@ -56,10 +43,16 @@ class CirclesGenerator(PlotAlgorithm):
         """Return a description of this algorithm."""
         return "Concentric circles with squiggles based on image brightness"
 
-    def is_procedural(self) -> bool:
-        return False
+    def _compute_canvas(self) -> tuple[int, int, int, int, int]:
+        calc_dpi = self.config['calc_dpi']
+        total_width_px = int(self.config['output_width_inches'] * calc_dpi)
+        total_height_px = int(self.config['output_height_inches'] * calc_dpi)
+        margin_px = int(self.config['margin_inches'] * calc_dpi)
+        drawable_width_px = total_width_px - (2 * margin_px)
+        drawable_height_px = total_height_px - (2 * margin_px)
+        return total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px
     
-    def generate_paths(self, image_path: str) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+    def generate_paths(self, image_path: Optional[str] = None) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
         """
         Generate plot paths from an image using concentric circles.
         
@@ -69,34 +62,18 @@ class CirclesGenerator(PlotAlgorithm):
         Returns:
             Tuple of (paths, metadata)
         """
+        if not image_path:
+            raise ValueError("image_path is required for circles algorithm")
+
         try:
             original_img = Image.open(image_path)
-        except IOError as e:
-            raise IOError(f"Cannot open image: {e}")
-        
-        # Extract config
-        calc_dpi = self.config['calc_dpi']
-        output_width_inches = self.config['output_width_inches']
-        output_height_inches = self.config['output_height_inches']
-        margin_inches = self.config['margin_inches']
-        n_circles = self.config['n_circles']
-        contrast_power = self.config['contrast_power']
-        amplitude_scale = self.config['amplitude_scale']
-        frequency_scale = self.config['frequency_scale']
-        white_threshold = self.config['white_threshold']
-        points_per_circle = self.config['points_per_circle']
-        
-        # Calculate dimensions
-        total_width_px = int(output_width_inches * calc_dpi)
-        total_height_px = int(output_height_inches * calc_dpi)
-        margin_px = int(margin_inches * calc_dpi)
-        
-        drawable_width_px = total_width_px - (2 * margin_px)
-        drawable_height_px = total_height_px - (2 * margin_px)
-        
+        except OSError as e:
+            raise OSError(f"Cannot open image: {e}")
+
+        total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px = self._compute_canvas()
         if drawable_width_px <= 0 or drawable_height_px <= 0:
             raise ValueError("Margins too large for output size")
-        
+
         # Process image
         gray_img = original_img.convert('L')
         processed_img = ImageOps.fit(
@@ -105,34 +82,44 @@ class CirclesGenerator(PlotAlgorithm):
             Image.Resampling.LANCZOS
         )
         processed_img = ImageOps.autocontrast(processed_img)
-        
+
         # Generate circular paths
         paths = self._generate_circular_paths(
-            processed_img, n_circles, drawable_width_px, drawable_height_px,
-            margin_px, contrast_power, amplitude_scale, frequency_scale,
-            white_threshold, points_per_circle
+            processed_img,
+            drawable_width_px=drawable_width_px,
+            drawable_height_px=drawable_height_px,
+            margin_px=margin_px,
         )
-        
+
         # Create metadata for SVG generation
         metadata = {
             'total_width_px': total_width_px,
             'total_height_px': total_height_px,
-            'output_width_inches': output_width_inches,
-            'output_height_inches': output_height_inches,
+            'output_width_inches': self.config['output_width_inches'],
+            'output_height_inches': self.config['output_height_inches'],
             'algorithm': self.get_algorithm_name()
         }
         
         return paths, metadata
     
-    def _generate_circular_paths(self, processed_img, n_circles, drawable_width_px,
-                                 drawable_height_px, margin_px, contrast_power,
-                                 amplitude_scale, frequency_scale, white_threshold,
-                                 points_per_circle) -> List[List[Tuple[float, float]]]:
+    def _generate_circular_paths(
+        self,
+        processed_img: Image.Image,
+        *,
+        drawable_width_px: int,
+        drawable_height_px: int,
+        margin_px: int,
+    ) -> List[List[Tuple[float, float]]]:
         """Generate concentric circular paths from center outward."""
-        import math
-        
         pixels = processed_img.load()
         img_width, img_height = processed_img.size
+
+        n_circles = int(self.config['n_circles'])
+        contrast_power = float(self.config['contrast_power'])
+        amplitude_scale = float(self.config['amplitude_scale'])
+        frequency_scale = float(self.config['frequency_scale'])
+        white_threshold = int(self.config['white_threshold'])
+        points_per_circle = int(self.config['points_per_circle'])
         
         # Center of the drawable area
         center_x = drawable_width_px / 2 + margin_px
@@ -157,8 +144,8 @@ class CirclesGenerator(PlotAlgorithm):
                 angle = (point_idx / points_per_circle) * 2 * math.pi
                 
                 # Position in image space for sampling
-                img_x = int((base_radius * math.cos(angle) + drawable_width_px / 2))
-                img_y = int((base_radius * math.sin(angle) + drawable_height_px / 2))
+                img_x = int(base_radius * math.cos(angle) + drawable_width_px / 2)
+                img_y = int(base_radius * math.sin(angle) + drawable_height_px / 2)
                 
                 # Clamp to image bounds
                 img_x = max(0, min(img_width - 1, img_x))
@@ -214,6 +201,8 @@ class CirclesGenerator(PlotAlgorithm):
         total_height_px = metadata['total_height_px']
         output_width_inches = metadata['output_width_inches']
         output_height_inches = metadata['output_height_inches']
+
+        stroke_width = self.config.get('stroke_width', 0.5)
         
         svg_lines = [
             f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -230,7 +219,9 @@ class CirclesGenerator(PlotAlgorithm):
             for x, y in path[1:]:
                 path_data += f' L {x:.2f},{y:.2f}'
             
-            svg_lines.append(f'<path d="{path_data}" stroke="black" fill="none" stroke-width="0.5"/>\n')
+            svg_lines.append(
+                f'<path d="{path_data}" stroke="black" fill="none" stroke-width="{stroke_width}"/>\n'
+            )
         
         svg_lines.append('</svg>')
         return ''.join(svg_lines)

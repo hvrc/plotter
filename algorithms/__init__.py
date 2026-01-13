@@ -1,13 +1,24 @@
-import os
 import inspect
 import importlib
-from typing import Dict, List, Type, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Type
 
 from .base import PlotAlgorithm
 
 # Algorithm registry - populated by auto-discovery
 _ALGORITHM_REGISTRY: Dict[str, Type[PlotAlgorithm]] = {}
+
+
+def _normalize_name(name: str) -> str:
+    return str(name).strip().lower()
+
+
+def _register_algorithm_class(cls: Type[PlotAlgorithm]) -> None:
+    """Instantiate a class to determine its registry name, then register it."""
+    instance = cls()
+    algo_name = _normalize_name(instance.get_algorithm_name())
+    if algo_name:
+        _ALGORITHM_REGISTRY[algo_name] = cls
 
 def discover_algorithms():
     """
@@ -23,7 +34,7 @@ def discover_algorithms():
         return
     
     # Get the algorithms directory path
-    algorithms_dir = Path(__file__).parent
+    algorithms_dir = Path(__file__).resolve().parent
     
     # Scan all Python files except __init__.py and base.py
     for file_path in algorithms_dir.glob("*.py"):
@@ -38,13 +49,12 @@ def discover_algorithms():
             
             # Find all classes in the module
             for name, obj in inspect.getmembers(module, inspect.isclass):
-                # Check if it's a subclass of PlotAlgorithm (but not PlotAlgorithm itself)
-                if issubclass(obj, PlotAlgorithm) and obj is not PlotAlgorithm:
-                    # Get the algorithm name from the instance
+                if obj is PlotAlgorithm:
+                    continue
+                # Check if it's a subclass of PlotAlgorithm
+                if issubclass(obj, PlotAlgorithm):
                     try:
-                        instance = obj()
-                        algo_name = instance.get_algorithm_name()
-                        _ALGORITHM_REGISTRY[algo_name] = obj
+                        _register_algorithm_class(obj)
                     except Exception as e:
                         print(f"Warning: Could not instantiate {name} from {module_name}: {e}")
         
@@ -52,7 +62,7 @@ def discover_algorithms():
             print(f"Warning: Could not import {module_name}: {e}")
 
 
-def get_algorithm(algorithm_name: str, config: Dict = None) -> PlotAlgorithm:
+def get_algorithm(algorithm_name: str, config: Optional[Dict[str, Any]] = None) -> PlotAlgorithm:
     """
     Get an algorithm instance by name.
     
@@ -69,18 +79,19 @@ def get_algorithm(algorithm_name: str, config: Dict = None) -> PlotAlgorithm:
     # Ensure algorithms are discovered
     discover_algorithms()
     
-    if algorithm_name.lower() not in _ALGORITHM_REGISTRY:
+    algorithm_key = _normalize_name(algorithm_name)
+    if algorithm_key not in _ALGORITHM_REGISTRY:
         available = ', '.join(_ALGORITHM_REGISTRY.keys())
         raise ValueError(
             f"Unknown algorithm: '{algorithm_name}'. "
             f"Available algorithms: {available}"
         )
     
-    algorithm_class = _ALGORITHM_REGISTRY[algorithm_name.lower()]
+    algorithm_class = _ALGORITHM_REGISTRY[algorithm_key]
     return algorithm_class(config)
 
 
-def list_algorithms() -> List[Dict[str, str]]:
+def list_algorithms() -> List[Dict[str, Any]]:
     """
     List all available algorithms.
     
@@ -90,8 +101,8 @@ def list_algorithms() -> List[Dict[str, str]]:
     # Ensure algorithms are discovered
     discover_algorithms()
     
-    algorithms = []
-    for name, cls in sorted(_ALGORITHM_REGISTRY.items()):
+    algorithms: List[Dict[str, Any]] = []
+    for name, cls in sorted(_ALGORITHM_REGISTRY.items(), key=lambda kv: kv[0]):
         try:
             instance = cls()
             algorithms.append({

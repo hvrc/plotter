@@ -7,7 +7,9 @@ This module handles all AxiDraw hardware interactions including:
 - Hardware configuration and settings
 """
 
-from typing import Dict, Any, Optional
+import json
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # Try to import AxiDraw
 try:
@@ -70,10 +72,10 @@ class PlotterController:
         Returns:
             Configured AxiDraw instance
         """
-        ad.options.pen_pos_up = self.config['pen_pos_up']
-        ad.options.pen_pos_down = self.config['pen_pos_down']
-        ad.options.auto_rotate = self.config['auto_rotate']
-        
+        ad.options.pen_pos_up = self.config.get('pen_pos_up', self.DEFAULT_CONFIG['pen_pos_up'])
+        ad.options.pen_pos_down = self.config.get('pen_pos_down', self.DEFAULT_CONFIG['pen_pos_down'])
+        ad.options.auto_rotate = self.config.get('auto_rotate', self.DEFAULT_CONFIG['auto_rotate'])
+
         # Optional speed settings
         if 'speed_pendown' in self.config:
             ad.options.speed_pendown = self.config['speed_pendown']
@@ -83,6 +85,42 @@ class PlotterController:
             ad.options.accel = self.config['accel']
         
         return ad
+
+    def _run_axidraw(
+        self,
+        *,
+        mode: str,
+        svg_path: Optional[str] = None,
+        manual_cmd: Optional[str] = None,
+        init_message: str,
+        run_message: str,
+    ) -> bool:
+        if not AXIDRAW_AVAILABLE:
+            print("Error: pyaxidraw not available")
+            return False
+
+        try:
+            print(f"\n{init_message}...")
+            ad = axidraw.AxiDraw()
+
+            if svg_path is None:
+                ad.plot_setup()
+            else:
+                ad.plot_setup(svg_path)
+
+            ad = self._configure_axidraw(ad)
+
+            ad.options.mode = mode
+            if manual_cmd is not None:
+                ad.options.manual_cmd = manual_cmd
+
+            print(run_message)
+            ad.plot_run()
+            print("\nOperation complete")
+            return True
+        except Exception as e:
+            print(f"Error during plotting: {e}")
+            return False
     
     def plot_file(self, svg_path: str, preview: bool = False) -> bool:
         """
@@ -95,30 +133,12 @@ class PlotterController:
         Returns:
             True if successful, False otherwise
         """
-        if not AXIDRAW_AVAILABLE:
-            print("Error: pyaxidraw not available")
-            return False
-        
-        try:
-            print(f"\nInitializing AxiDraw for {'preview' if preview else 'plotting'}...")
-            ad = axidraw.AxiDraw()
-            ad.plot_setup(svg_path)
-            ad = self._configure_axidraw(ad)
-            
-            if preview:
-                ad.options.mode = "preview"
-                print("Running preview...")
-            else:
-                ad.options.mode = "plot"
-                print("Starting plot...")
-            
-            ad.plot_run()
-            print("\nOperation complete")
-            return True
-            
-        except Exception as e:
-            print(f"Error during plotting: {e}")
-            return False
+        return self._run_axidraw(
+            mode="preview" if preview else "plot",
+            svg_path=svg_path,
+            init_message=f"Initializing AxiDraw for {'preview' if preview else 'plotting'}",
+            run_message="Running preview..." if preview else "Starting plot...",
+        )
     
     def execute_command(self, command: str) -> bool:
         """
@@ -136,30 +156,22 @@ class PlotterController:
         Returns:
             True if successful, False otherwise
         """
-        if not AXIDRAW_AVAILABLE:
-            print("Error: pyaxidraw not available")
-            return False
-        
         valid_commands = ['disable_xy', 'walk_home', 'raise_pen', 'lower_pen']
         if command not in valid_commands:
             print(f"Error: Invalid command '{command}'")
             print(f"Valid commands: {', '.join(valid_commands)}")
             return False
-        
-        try:
-            print(f"\nExecuting command: {command}")
-            ad = axidraw.AxiDraw()
-            ad.plot_setup()
-            ad = self._configure_axidraw(ad)
-            ad.options.mode = "manual"
-            ad.options.manual_cmd = command
-            ad.plot_run()
+
+        ok = self._run_axidraw(
+            mode="manual",
+            svg_path=None,
+            manual_cmd=command,
+            init_message=f"Executing command: {command}",
+            run_message="Running manual command...",
+        )
+        if ok:
             print("Command complete")
-            return True
-            
-        except Exception as e:
-            print(f"Error executing command: {e}")
-            return False
+        return ok
     
     def get_available_commands(self) -> Dict[str, str]:
         """
@@ -222,17 +234,16 @@ class PlotterSettings:
         Returns:
             Loaded settings dict
         """
-        import json
-        import os
-        
-        if os.path.exists(self.settings_file):
+        path = Path(self.settings_file)
+        if path.exists():
             try:
-                with open(self.settings_file, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     loaded = json.load(f)
+                if isinstance(loaded, dict):
                     self.settings.update(loaded)
             except Exception as e:
                 print(f"Warning: Could not load settings: {e}")
-        
+
         return self.settings.copy()
     
     def save(self) -> bool:
@@ -242,10 +253,11 @@ class PlotterSettings:
         Returns:
             True if successful, False otherwise
         """
-        import json
-        
+        path = Path(self.settings_file)
         try:
-            with open(self.settings_file, 'w') as f:
+            if path.parent and not path.parent.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2)
             return True
         except Exception as e:

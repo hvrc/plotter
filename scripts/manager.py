@@ -1,6 +1,5 @@
-import os
 import shutil
-from typing import List, Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional
 from pathlib import Path
 
 class DatabaseManager:
@@ -21,6 +20,28 @@ class DatabaseManager:
         """Create database directories if they don't exist."""
         self.images_path.mkdir(parents=True, exist_ok=True)
         self.plots_path.mkdir(parents=True, exist_ok=True)
+
+    def _iter_files(self, directory: Path, extensions: Optional[Iterable[str]] = None) -> List[Path]:
+        """Return files in directory optionally filtered by extension (case-insensitive)."""
+        if not directory.exists():
+            return []
+
+        normalized_exts = None
+        if extensions is not None:
+            normalized_exts = {
+                (ext if ext.startswith('.') else f'.{ext}').lower()
+                for ext in extensions
+            }
+
+        results: List[Path] = []
+        for path in directory.iterdir():
+            if not path.is_file():
+                continue
+            if normalized_exts is not None and path.suffix.lower() not in normalized_exts:
+                continue
+            results.append(path)
+
+        return results
     
     # ==========================================
     # IMAGE OPERATIONS
@@ -38,13 +59,9 @@ class DatabaseManager:
         """
         if extensions is None:
             extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff']
-        
-        images = []
-        for file in self.images_path.iterdir():
-            if file.is_file() and file.suffix.lower() in extensions:
-                images.append(file.name)
-        
-        return sorted(images)
+
+        image_files = self._iter_files(self.images_path, extensions)
+        return sorted(p.name for p in image_files)
     
     def get_image_path(self, filename: str) -> str:
         """
@@ -94,12 +111,11 @@ class DatabaseManager:
         Returns:
             Sorted list of plot directory names
         """
-        plots = []
-        for item in self.plots_path.iterdir():
-            if item.is_dir():
-                plots.append(item.name)
-        
-        return sorted(plots)
+        if not self.plots_path.exists():
+            return []
+
+        plot_dirs = [p.name for p in self.plots_path.iterdir() if p.is_dir()]
+        return sorted(plot_dirs)
     
     def get_plot_path(self, plot_name: str) -> str:
         """
@@ -131,7 +147,7 @@ class DatabaseManager:
         plot_dir.mkdir(parents=True, exist_ok=True)
         return str(plot_dir)
     
-    def get_plot_info(self, plot_name: str) -> Optional[Dict[str, any]]:
+    def get_plot_info(self, plot_name: str) -> Optional[Dict[str, Any]]:
         """
         Get information about a plot.
         
@@ -145,20 +161,18 @@ class DatabaseManager:
         if not plot_dir.is_dir():
             return None
         
-        info = {
+        info: Dict[str, Any] = {
             'name': plot_name,
             'path': str(plot_dir),
             'files': []
         }
-        
-        # List files in plot directory
-        for file in plot_dir.iterdir():
-            if file.is_file():
-                info['files'].append({
-                    'name': file.name,
-                    'type': file.suffix.lower(),
-                    'path': str(file)
-                })
+
+        for file in self._iter_files(plot_dir):
+            info['files'].append({
+                'name': file.name,
+                'type': file.suffix.lower(),
+                'path': str(file)
+            })
         
         return info
     
@@ -176,14 +190,10 @@ class DatabaseManager:
         if not plot_dir.is_dir():
             return None
         
-        # Find first SVG file
-        for file in plot_dir.iterdir():
-            if file.suffix.lower() == '.svg':
-                return str(file)
-        
-        return None
+        svg_files = self.get_plot_svgs(plot_name)
+        return svg_files[0] if svg_files else None
     
-    def get_plot_svgs(self, plot_name: str) -> list:
+    def get_plot_svgs(self, plot_name: str) -> List[str]:
         """
         Get all SVG file paths for a plot.
         
@@ -197,13 +207,8 @@ class DatabaseManager:
         if not plot_dir.is_dir():
             return []
         
-        # Find all SVG files
-        svg_files = []
-        for file in sorted(plot_dir.iterdir()):
-            if file.suffix.lower() == '.svg':
-                svg_files.append(str(file))
-        
-        return svg_files
+        svg_paths = self._iter_files(plot_dir, extensions=['.svg'])
+        return [str(p) for p in sorted(svg_paths, key=lambda p: p.name.lower())]
     
     def delete_plot(self, plot_name: str) -> bool:
         """
@@ -255,7 +260,7 @@ class DatabaseManager:
                 # Fabric directions mode: save one SVG per direction
                 for direction, svg in svg_content.items():
                     svg_path = plot_path / f"{plot_name}_{direction}.svg"
-                    with open(svg_path, 'w') as f:
+                    with open(svg_path, 'w', encoding='utf-8') as f:
                         f.write(svg)
                     saved_files[f'svg_{direction}'] = str(svg_path)
             else:
@@ -263,13 +268,13 @@ class DatabaseManager:
                 for i, (color, svg) in enumerate(svg_content.items()):
                     color_hex = f"{color[0]:02x}{color[1]:02x}{color[2]:02x}"
                     svg_path = plot_path / f"{plot_name}_color{i+1}_{color_hex}.svg"
-                    with open(svg_path, 'w') as f:
+                    with open(svg_path, 'w', encoding='utf-8') as f:
                         f.write(svg)
                     saved_files[f'svg_color{i+1}'] = str(svg_path)
         else:
             # Single color mode
             svg_path = plot_path / f"{plot_name}.svg"
-            with open(svg_path, 'w') as f:
+            with open(svg_path, 'w', encoding='utf-8') as f:
                 f.write(svg_content)
             saved_files['svg'] = str(svg_path)
         
@@ -290,7 +295,7 @@ class DatabaseManager:
         if metadata:
             import json
             metadata_path = plot_path / "metadata.json"
-            with open(metadata_path, 'w') as f:
+            with open(metadata_path, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2)
             saved_files['metadata'] = str(metadata_path)
         
@@ -300,7 +305,7 @@ class DatabaseManager:
     # UTILITY METHODS
     # ==========================================
     
-    def get_database_stats(self) -> Dict[str, any]:
+    def get_database_stats(self) -> Dict[str, Any]:
         """
         Get statistics about the database.
         

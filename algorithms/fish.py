@@ -5,7 +5,7 @@ Generates a single centered circle (procedural).
 """
 
 import math
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw
 
@@ -25,16 +25,30 @@ class FishGenerator(PlotAlgorithm):
         'stroke_width': 0.5
     }
 
-    def __init__(self, config: Dict[str, Any] = None):
-        self.config = self.DEFAULT_CONFIG.copy()
-        if config:
-            self.config.update(config)
+    @staticmethod
+    def _circle_path_px(cx: float, cy: float, radius: float, points: int) -> List[Tuple[float, float]]:
+        path: List[Tuple[float, float]] = []
+        for i in range(points + 1):
+            angle = (i / points) * 2 * math.pi
+            path.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+        return path
 
-    def get_config(self) -> Dict[str, Any]:
-        return self.config.copy()
-
-    def set_config(self, config: Dict[str, Any]):
-        self.config.update(config)
+    @staticmethod
+    def _compute_canvas_px(
+        *,
+        output_width_inches: float,
+        output_height_inches: float,
+        margin_inches: float,
+        dpi: float,
+    ) -> Tuple[int, int, int, int, int]:
+        total_width_px = int(output_width_inches * dpi)
+        total_height_px = int(output_height_inches * dpi)
+        margin_px = int(margin_inches * dpi)
+        drawable_width_px = total_width_px - (2 * margin_px)
+        drawable_height_px = total_height_px - (2 * margin_px)
+        if drawable_width_px <= 0 or drawable_height_px <= 0:
+            raise ValueError("Margins too large for output size")
+        return total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px
 
     def get_algorithm_name(self) -> str:
         return "fish"
@@ -45,35 +59,31 @@ class FishGenerator(PlotAlgorithm):
     def is_procedural(self) -> bool:
         return True
 
-    def generate_paths(self, image_path: str = None) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
-        calc_dpi = self.config['calc_dpi']
-        output_width_inches = self.config['output_width_inches']
-        output_height_inches = self.config['output_height_inches']
-        margin_inches = self.config['margin_inches']
-        radius_fraction = float(self.config.get('radius_fraction', 0.9))
-        points_per_circle = int(self.config.get('points_per_circle', 720))
+    def generate_paths(self, image_path: Optional[str] = None) -> Tuple[List[List[Tuple[float, float]]], Dict[str, Any]]:
+        config = self.config
 
-        total_width_px = int(output_width_inches * calc_dpi)
-        total_height_px = int(output_height_inches * calc_dpi)
-        margin_px = int(margin_inches * calc_dpi)
+        dpi = float(config['calc_dpi'])
+        output_width_inches = float(config['output_width_inches'])
+        output_height_inches = float(config['output_height_inches'])
+        margin_inches = float(config['margin_inches'])
+        radius_fraction = float(config.get('radius_fraction', 0.9) or 0.0)
+        points_per_circle = int(config.get('points_per_circle', 720) or 0)
+        if points_per_circle < 3:
+            raise ValueError("points_per_circle must be >= 3")
 
-        drawable_width_px = total_width_px - (2 * margin_px)
-        drawable_height_px = total_height_px - (2 * margin_px)
-        if drawable_width_px <= 0 or drawable_height_px <= 0:
-            raise ValueError("Margins too large for output size")
+        total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px = self._compute_canvas_px(
+            output_width_inches=output_width_inches,
+            output_height_inches=output_height_inches,
+            margin_inches=margin_inches,
+            dpi=dpi,
+        )
 
         radius_fraction = max(0.0, min(1.0, radius_fraction))
-
         center_x = drawable_width_px / 2 + margin_px
         center_y = drawable_height_px / 2 + margin_px
         radius = (min(drawable_width_px, drawable_height_px) / 2) * radius_fraction
 
-        path: List[Tuple[float, float]] = []
-        for i in range(points_per_circle + 1):
-            angle = (i / points_per_circle) * 2 * math.pi
-            x = center_x + radius * math.cos(angle)
-            y = center_y + radius * math.sin(angle)
-            path.append((x, y))
+        path = self._circle_path_px(center_x, center_y, radius, points_per_circle)
 
         metadata = {
             'total_width_px': total_width_px,
@@ -81,7 +91,7 @@ class FishGenerator(PlotAlgorithm):
             'output_width_inches': output_width_inches,
             'output_height_inches': output_height_inches,
             'algorithm': self.get_algorithm_name(),
-            'stroke_width': float(self.config.get('stroke_width', 0.5))
+            'stroke_width': float(config.get('stroke_width', 0.5))
         }
 
         return [path], metadata
@@ -103,9 +113,9 @@ class FishGenerator(PlotAlgorithm):
         for path in paths:
             if len(path) < 2:
                 continue
-            d_str = f"M {path[0][0]:.2f},{path[0][1]:.2f}"
-            for x, y in path[1:]:
-                d_str += f" L {x:.2f},{y:.2f}"
+            d_str = f"M {path[0][0]:.2f},{path[0][1]:.2f}" + ''.join(
+                f" L {x:.2f},{y:.2f}" for x, y in path[1:]
+            )
             svg_lines.append(
                 f'<path d="{d_str}" stroke="black" fill="none" stroke-width="{stroke_width}"/>\n'
             )

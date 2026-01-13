@@ -1,5 +1,8 @@
+import os
 import sys
-from typing import Optional, Dict, Any
+import time
+import traceback
+from typing import Optional
 from manager import DatabaseManager
 from plotter import PlotterController
 from settings import SettingsManager
@@ -21,8 +24,65 @@ class CommandLineInterface:
     
     def clear_screen(self):
         """Clear the terminal screen."""
-        import os
         os.system('cls' if os.name == 'nt' else 'clear')
+
+    def _get_algorithm_instance(self):
+        return get_algorithm(self.algorithm_name, self.algorithm_config)
+
+    def _algorithm_is_procedural(self) -> bool:
+        try:
+            return self._get_algorithm_instance().is_procedural()
+        except Exception:
+            return False
+
+    def _generation_needs_image(self) -> bool:
+        """Whether plot generation should prompt for an image."""
+        if not self._algorithm_is_procedural():
+            return True
+        # Special case: fabric can be procedural or image-driven depending on config
+        if self.algorithm_name == 'fabric':
+            return self.algorithm_config.get('displacement_mode', 'random') == 'image'
+        return False
+
+    def _generate_menu_label(self) -> str:
+        return "Generate Plot from Image" if self._generation_needs_image() else "Generate Plot (Procedural)"
+
+    def _select_from_list(self, items: list[str], prompt: str, header: Optional[str] = None) -> Optional[str]:
+        """Render a numbered list with a Back option. Returns selected item or None."""
+        if header:
+            self.print_header(header)
+
+        if not items:
+            return None
+
+        for i, item in enumerate(items, 1):
+            print(f"{i}. {item}")
+        print(f"{len(items) + 1}. Back")
+
+        choice = self.get_number(prompt)
+        if choice is None or choice == len(items) + 1:
+            return None
+        if 1 <= choice <= len(items):
+            return items[choice - 1]
+
+        print("\nInvalid selection")
+        self.pause()
+        return None
+
+    def _parse_typed_value(self, current_value, new_value_str: str):
+        """Parse user input into the type of current_value."""
+        if isinstance(current_value, bool):
+            return new_value_str.lower() in ['true', '1', 'yes', 'y']
+        if isinstance(current_value, int):
+            return int(new_value_str)
+        if isinstance(current_value, float):
+            return float(new_value_str)
+        return new_value_str
+
+    def _set_current_algorithm(self, algorithm_name: str):
+        self.algorithm_name = algorithm_name
+        self.settings.set_current_algorithm(algorithm_name)
+        self.algorithm_config = self.settings.get_algorithm_settings(algorithm_name)
     
     def print_header(self, title: str):
         """Print a section header."""
@@ -54,16 +114,8 @@ class CommandLineInterface:
         """Display and handle main menu."""
         while True:
             self.print_header("PLOT GENERATOR - MAIN MENU")
-            
-            # Dynamic menu text based on algorithm
-            if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
-                displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
-                if self.algorithm_name == 'fabric' and displacement_mode == 'image':
-                    print("1. Generate Plot from Image")
-                else:
-                    print("1. Generate Plot (Procedural)")
-            else:
-                print("1. Generate Plot from Image")
+
+            print(f"1. {self._generate_menu_label()}")
             
             print("2. Run Existing Plot on Plotter")
             print("3. Manual Plotter Control")
@@ -99,64 +151,34 @@ class CommandLineInterface:
     
     def generate_plot_menu(self):
         """Menu for generating plots."""
-        # Check if current algorithm generates from scratch or needs an image
-        if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
-            # Check if fabric is in 'image' displacement mode
-            displacement_mode = self.algorithm_config.get('displacement_mode', 'random')
-            if self.algorithm_name == 'fabric' and displacement_mode == 'image':
-                # Fabric in image mode - needs an image input
-                self._generate_plot_from_image()
-            else:
-                # Fabric generates procedurally, no input image needed
-                self._generate_plot_procedural()
-        else:
-            # Image-based algorithms
+        if self._generation_needs_image():
             self._generate_plot_from_image()
+            return
+        self._generate_plot_procedural()
     
     def _generate_plot_from_image(self):
         """Menu for generating plots from images."""
-        self.print_header("GENERATE PLOT FROM IMAGE")
-        
         images = self.db.list_images()
-        
+
         if not images:
+            self.print_header("GENERATE PLOT FROM IMAGE")
             print("No images found in database/images/")
             print("Please add images to the database/images/ directory")
             self.pause()
             return
-        
+
         print("Available images:")
-        for i, img in enumerate(images, 1):
-            print(f"{i}. {img}")
-        print(f"{len(images) + 1}. Back")
-        
-        choice = self.get_number("\nSelect image")
-        
-        if choice is None or choice == len(images) + 1:
-            return
-        
-        if 1 <= choice <= len(images):
-            selected_image = images[choice - 1]
+        selected_image = self._select_from_list(images, "\nSelect image", header="GENERATE PLOT FROM IMAGE")
+        if selected_image:
             self._generate_plot(selected_image)
-        else:
-            print("\nInvalid selection")
-            self.pause()
     
     def _generate_plot_procedural(self):
         """Generate a procedural plot (no input image required)."""
-        import os
-        import time
-        
         self.print_header("GENERATE PROCEDURAL PLOT")
         
         # Generate name based on algorithm
-        # For fabric, fish, sphere, spiral, features, and terrain use consistent name to replace previous versions
-        if self.algorithm_name in ('fabric', 'fish', 'sphere', 'spiral', 'features', 'terrain'):
-            base_name = 'spirals' if self.algorithm_name == 'spiral' else self.algorithm_name
-        else:
-            # For other algorithms, use timestamp for unique names
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            base_name = f"{self.algorithm_name}_{timestamp}"
+        # For procedural algorithms, use a consistent name to replace previous versions
+        base_name = 'spirals' if self.algorithm_name == 'spiral' else self.algorithm_name
         
         print(f"Generating plot: {base_name}")
         print(f"Using algorithm: {self.algorithm_name}")
@@ -201,15 +223,12 @@ class CommandLineInterface:
             
         except Exception as e:
             print(f"\n✗ Error generating plot: {e}")
-            import traceback
             traceback.print_exc()
         
         self.pause()
     
     def _generate_plot(self, image_filename: str):
         """Generate a plot from an image."""
-        import os
-        
         image_path = self.db.get_image_path(image_filename)
         base_name = os.path.splitext(image_filename)[0]
         
@@ -261,6 +280,7 @@ class CommandLineInterface:
             
         except Exception as e:
             print(f"\n✗ Error generating plot: {e}")
+            traceback.print_exc()
         
         self.pause()
     
@@ -287,21 +307,9 @@ class CommandLineInterface:
             return
         
         print("Available plots:")
-        for i, plot in enumerate(plots, 1):
-            print(f"{i}. {plot}")
-        print(f"{len(plots) + 1}. Back")
-        
-        choice = self.get_number("\nSelect plot")
-        
-        if choice is None or choice == len(plots) + 1:
-            return
-        
-        if 1 <= choice <= len(plots):
-            selected_plot = plots[choice - 1]
+        selected_plot = self._select_from_list(plots, "\nSelect plot")
+        if selected_plot:
             self._run_plot(selected_plot)
-        else:
-            print("\nInvalid selection")
-            self.pause()
     
     def _run_plot(self, plot_name: str):
         """Run a plot on the plotter."""
@@ -314,7 +322,6 @@ class CommandLineInterface:
         
         # If multiple SVG files, let user choose
         if len(svg_files) > 1:
-            import os
             print(f"\nPlot: {plot_name}")
             print(f"\nFound {len(svg_files)} SVG files:")
             for i, svg_path in enumerate(svg_files, 1):
@@ -341,7 +348,6 @@ class CommandLineInterface:
             svg_paths_to_plot = svg_files
         
         # Show plotting options
-        import os
         print(f"\nPlot: {plot_name}")
         if len(svg_paths_to_plot) == 1:
             print(f"SVG: {os.path.basename(svg_paths_to_plot[0])}")
@@ -354,22 +360,17 @@ class CommandLineInterface:
         
         choice = self.get_number("\nSelect option")
         
-        if choice == 1:
+        if choice in (1, 2):
+            preview = (choice == 2)
+            verb = "Previewing" if preview else "Plotting"
+            success = True
             for svg_path in svg_paths_to_plot:
-                print(f"\nPlotting: {os.path.basename(svg_path)}")
-                success = self.plotter.plot_file(svg_path, preview=False)
+                print(f"\n{verb}: {os.path.basename(svg_path)}")
+                success = self.plotter.plot_file(svg_path, preview=preview)
                 if not success:
                     break
             if success:
-                print("\n✓ Plot complete!")
-        elif choice == 2:
-            for svg_path in svg_paths_to_plot:
-                print(f"\nPreviewing: {os.path.basename(svg_path)}")
-                success = self.plotter.plot_file(svg_path, preview=True)
-                if not success:
-                    break
-            if success:
-                print("\n✓ Preview complete!")
+                print("\n✓ Preview complete!" if preview else "\n✓ Plot complete!")
         
         self.pause()
     
@@ -451,46 +452,32 @@ class CommandLineInterface:
     
     def _change_algorithm(self):
         """Change the current algorithm."""
-        print("\nAvailable algorithms:")
-        print("1. waves - Wave-based plot generation")
-        print("2. circles - Concentric circles with squiggles")
-        print("3. fabric - Procedurally generated fabric texture")
-        print("4. fish - Single centered circle")
-        print("5. sphere - 3D sphere with flow lines")
-        print("6. Back")
-        
+        self.print_header("CHANGE ALGORITHM")
+
+        algorithms = list_algorithms()
+        if not algorithms:
+            print("No algorithms found.")
+            self.pause()
+            return
+
+        for i, algo in enumerate(algorithms, 1):
+            procedural = "procedural" if algo.get('procedural') else "image"
+            desc = algo.get('description', '')
+            print(f"{i}. {algo['name']} ({procedural}) - {desc}")
+        print(f"{len(algorithms) + 1}. Back")
+
         choice = self.get_number("\nSelect algorithm")
-        
-        if choice == 1:
-            self.algorithm_name = 'waves'
-            self.settings.set_current_algorithm('waves')
-            self.algorithm_config = self.settings.get_algorithm_settings('waves')
+        if choice is None or choice == len(algorithms) + 1:
+            return
+        if 1 <= choice <= len(algorithms):
+            selected = algorithms[choice - 1]['name']
+            self._set_current_algorithm(selected)
             print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
             self.pause()
-        elif choice == 2:
-            self.algorithm_name = 'circles'
-            self.settings.set_current_algorithm('circles')
-            self.algorithm_config = self.settings.get_algorithm_settings('circles')
-            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
-            self.pause()
-        elif choice == 3:
-            self.algorithm_name = 'fabric'
-            self.settings.set_current_algorithm('fabric')
-            self.algorithm_config = self.settings.get_algorithm_settings('fabric')
-            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
-            self.pause()
-        elif choice == 4:
-            self.algorithm_name = 'fish'
-            self.settings.set_current_algorithm('fish')
-            self.algorithm_config = self.settings.get_algorithm_settings('fish')
-            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
-            self.pause()
-        elif choice == 5:
-            self.algorithm_name = 'sphere'
-            self.settings.set_current_algorithm('sphere')
-            self.algorithm_config = self.settings.get_algorithm_settings('sphere')
-            print(f"\n✓ Algorithm changed to: {self.algorithm_name}")
-            self.pause()
+            return
+
+        print("\nInvalid selection")
+        self.pause()
     
     def _edit_algorithm_setting(self, key: str):
         """Edit a specific algorithm setting."""
@@ -503,15 +490,7 @@ class CommandLineInterface:
             return
         
         try:
-            # Try to match the type of the current value
-            if isinstance(current_value, bool):
-                new_value = new_value_str.lower() in ['true', '1', 'yes']
-            elif isinstance(current_value, int):
-                new_value = int(new_value_str)
-            elif isinstance(current_value, float):
-                new_value = float(new_value_str)
-            else:
-                new_value = new_value_str
+            new_value = self._parse_typed_value(current_value, new_value_str)
             
             self.algorithm_config[key] = new_value
             # Save to centralized settings
@@ -548,7 +527,6 @@ class CommandLineInterface:
                 return
             elif choice == len(settings_list) + 1:
                 # Reset plotter settings to defaults
-                from plotter import PlotterController
                 self.settings.update_plotter_settings(PlotterController.DEFAULT_CONFIG)
                 self.plotter.set_config(self.settings.get_plotter_settings())
                 print("\n✓ Settings reset to defaults and saved")
@@ -572,15 +550,7 @@ class CommandLineInterface:
             return
         
         try:
-            # Try to match the type of the current value
-            if isinstance(current_value, bool):
-                new_value = new_value_str.lower() in ['true', '1', 'yes']
-            elif isinstance(current_value, int):
-                new_value = int(new_value_str)
-            elif isinstance(current_value, float):
-                new_value = float(new_value_str)
-            else:
-                new_value = new_value_str
+            new_value = self._parse_typed_value(current_value, new_value_str)
             
             # Save to centralized settings
             self.settings.set_plotter_setting(key, new_value)
