@@ -30,7 +30,8 @@ class WavesGenerator(PlotAlgorithm):
         'use_serpentine': False,
         'calc_dpi': 300,
         'draw_direction': 'horizontal',  # 'horizontal' or 'vertical'
-        'numColors': 1  # Number of dominant colors (1 = single black layer)
+        'numColors': 1,  # Number of dominant colors (1 = single black layer)
+        'color_mask': []
     }
     
     def get_algorithm_name(self) -> str:
@@ -168,6 +169,7 @@ class WavesGenerator(PlotAlgorithm):
         use_serpentine = bool(config['use_serpentine'])
         draw_direction = str(config.get('draw_direction', 'horizontal') or 'horizontal').lower()
         num_colors = int(config.get('numColors', 1) or 1)
+        color_mask = config.get('color_mask', [])
 
         total_width_px, total_height_px, margin_px, drawable_width_px, drawable_height_px = self._compute_canvas_px(
             output_width_inches=output_width_inches,
@@ -189,7 +191,11 @@ class WavesGenerator(PlotAlgorithm):
             
             # Generate paths for each color
             color_paths = {}
-            for color in dominant_colors:
+            for i, color in enumerate(dominant_colors):
+                # Check execution mask
+                if color_mask and i < len(color_mask) and not int(color_mask[i]):
+                    continue
+
                 # Create mask for this color
                 mask = self._create_color_mask(quantized_img, color, tolerance=15)
                 

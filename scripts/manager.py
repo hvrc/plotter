@@ -1,4 +1,5 @@
 import shutil
+import xml.etree.ElementTree as ET
 from typing import Any, Dict, Iterable, List, Optional
 from pathlib import Path
 
@@ -332,3 +333,49 @@ class DatabaseManager:
                 shutil.rmtree(plot_dir)
                 count += 1
         return count
+
+    def merge_svgs(self, plot_name: str, input_filenames: List[str], output_filename: str) -> bool:
+        """
+        Merge multiple SVG files into a single SVG file.
+        
+        Args:
+            plot_name: Name of the plot directory
+            input_filenames: List of filenames to merge
+            output_filename: Name of the output file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not input_filenames:
+            return False
+            
+        plot_dir = self.plots_path / plot_name
+        files = [plot_dir / f for f in input_filenames]
+        
+        # Check all exist
+        if not all(f.exists() for f in files):
+            return False
+            
+        try:
+            # Register namespace to ensure 'svg' tag doesn't get strict namespace prefix
+            svg_ns = "http://www.w3.org/2000/svg"
+            ET.register_namespace('', svg_ns)
+            
+            # Parse first file to use as base
+            tree = ET.parse(files[0])
+            root = tree.getroot()
+            
+            # Append contents of other files
+            for f_path in files[1:]:
+                f_tree = ET.parse(f_path)
+                f_root = f_tree.getroot()
+                # Append all children of the root (groups, paths, defs)
+                for child in f_root:
+                    root.append(child)
+            
+            output_path = plot_dir / output_filename
+            tree.write(output_path, encoding='unicode', xml_declaration=False)
+            return True
+        except Exception as e:
+            print(f"Error merging SVGs: {e}")
+            return False

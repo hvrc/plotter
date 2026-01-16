@@ -1,6 +1,6 @@
 {
   "plotter": {
-    "pen_pos_up": 100,
+    "pen_pos_up": 200,
     "pen_pos_down": 30,
     "auto_rotate": false,
     "speed_pendown": 25,
@@ -10,18 +10,19 @@
   "algorithm": {
     "current_algorithm": "waves",
     "waves": {
-      "output_width_inches": 5.8,
-      "output_height_inches": 4.1,
+      "output_width_inches": 4.1,
+      "output_height_inches": 5.8,
       "margin_inches": 0,
       "n_rows": 500,
-      "contrast_power": 1.5,
-      "amplitude_scale": 1,
-      "frequency_scale": 1,
-      "white_threshold": 225,
+      "contrast_power": 3,
+      "amplitude_scale": 2.0,
+      "frequency_scale": 2.5,
+      "white_threshold": 160,
       "use_serpentine": true,
       "calc_dpi": 300,
-      "draw_direction": "vertical",
-      "numColors": 4
+      "draw_direction": "horizontal",
+      "numColors": 1,
+      "color_mask": []
     },
     "circles": {
       "output_width_inches": 6.0,
@@ -35,40 +36,31 @@
       "calc_dpi": 300,
       "points_per_circle": 360
     },
-    "fabric":{
-    "output_width_inches": 5,
-    "output_height_inches": 3,
-    "margin_inches": 0.4,
-    "calc_dpi": 300,
-    "grid_cols": 200,
-    "grid_rows": 120,
-    "displacement_mode": "ripples",
-    "noise_scale_x": 0.0001,
-    "noise_scale_y": 0.001,
-    "noise_octaves": 4,
-    "noise_persistence": 0.1,
-    "noise_lacunarity": 0.5,
-    "displacement_magnitude": 2,
-    "ripple_frequency": 0.04,
-    "ripple_amplitude": 15,
-    "ripple_centers": 2,
-    "ripple_centers_locations": [
-      [
-        0.1,
-        0.4
-      ],
-      [
-        0.9,
-        0.4
-      ]
-    ],
-    "enable_weave": false,
-    "line_direction": "both",
-    "ripple_noise_warp": 600,
-    "ripple_frequency_jitter": 1.0,
-    "ripple_amplitude_jitter": 0.5,
-    "image_displacement_scale": 0
-  },
+    "fabric": {
+      "output_width_inches": 5.8,
+      "output_height_inches": 4.1,
+      "margin_inches": 0.4,
+      "calc_dpi": 300,
+      "grid_cols": 300,
+      "grid_rows": 150,
+      "displacement_mode": "ripples",
+      "noise_scale_x": 0.0015,
+      "noise_scale_y": 0.0015,
+      "noise_octaves": 4,
+      "noise_persistence": 0.7,
+      "noise_lacunarity": 1.0,
+      "displacement_magnitude": 2,
+      "ripple_frequency": 0.05,
+      "ripple_amplitude": 10,
+      "ripple_centers": 3,
+      "ripple_centers_locations": [],
+      "enable_weave": false,
+      "line_direction": "both",
+      "ripple_noise_warp": 600,
+      "ripple_frequency_jitter": 2.0,
+      "ripple_amplitude_jitter": 0.5,
+      "image_displacement_scale": 0
+    },
     "fish": {
       "output_width_inches": 4.5,
       "output_height_inches": 6,
@@ -100,14 +92,13 @@
       "fabric_noise_scale": 0.02,
       "fabric_displacement": 30.0,
       "fabric_octaves": 25,
-      "fabric_persistence": 0.00,
+      "fabric_persistence": 0.0,
       "fabric_lacunarity": 0.01
     },
     "spiral": {
       "output_width_inches": 5,
       "output_height_inches": 3,
       "margin_inches": 0.7,
-      "calc_dpi": 300,
       "num_attractors": 10,
       "num_particles": 100,
       "max_steps": 100,
@@ -117,6 +108,7 @@
       "noise_influence": 0.0,
       "spiral_tightness": 0.9,
       "stroke_width": 0.5,
+      "calc_dpi": 300,
       "color_gradient": false,
       "min_distance": 0.1,
       "connect_paths": false,

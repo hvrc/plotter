@@ -122,7 +122,8 @@ class CommandLineInterface:
             print("4. Algorithm Settings")
             print("5. Plotter Settings")
             print("6. View Database Info")
-            print("7. Exit")
+            print("7. Merge SVGs")
+            print("8. Exit")
             
             choice = self.get_number("\nSelect option")
             
@@ -139,6 +140,8 @@ class CommandLineInterface:
             elif choice == 6:
                 self.database_info_menu()
             elif choice == 7:
+                self.merge_svgs_menu()
+            elif choice == 8:
                 print("\nGoodbye!")
                 sys.exit(0)
             else:
@@ -589,6 +592,105 @@ class CommandLineInterface:
         
         self.pause()
     
+    # ==========================================
+    # MERGE SVGS MENU
+    # ==========================================
+    
+    def merge_svgs_menu(self):
+        """Menu for merging SVGs."""
+        while True:
+            self.print_header("MERGE SVGS - SELECT PLOT")
+            # 1. Select Plot
+            plots = self.db.list_plots()
+            if not plots:
+                print("\nNo plots found.")
+                self.pause()
+                return
+
+            plot_name = self._select_from_list(
+                plots, 
+                "Select plot containing SVGs to merge", 
+            )
+            
+            if not plot_name:
+                return
+            
+            # 2. List SVGs and Merge
+            while True:
+                svg_files = self.db.get_plot_svgs(plot_name)
+                
+                if not svg_files:
+                    print(f"\nNo SVG files found in plot '{plot_name}'")
+                    self.pause()
+                    break
+                    
+                self.print_header(f"MERGE SVGS - {plot_name}")
+                print(f"Found {len(svg_files)} SVG files:")
+                
+                # List files with full names
+                for i, f_path in enumerate(svg_files, 1):
+                    f_name = os.path.basename(f_path)
+                    print(f"{i}. {f_name}")
+                
+                # Add extra option for "Plot all files sequentially"
+                print(f"{len(svg_files) + 1}. Plot all files sequentially")
+                print(f"{len(svg_files) + 2}. Back")
+                
+                response = self.get_input(f"\nEnter file numbers to merge (e.g. 2, 3, 5)")
+                
+                # Handle Back or empty
+                if not response:
+                    continue
+                
+                # Parse response
+                # Check for explicit menu options (single number)
+                try:
+                    if response.isdigit():
+                        val = int(response)
+                        if val == len(svg_files) + 2:
+                            break # Back
+                        if val == len(svg_files) + 1:
+                            print("\nFeature 'Plot all files sequentially' is not implemented in this version.")
+                            self.pause()
+                            continue
+                except:
+                    pass
+
+                # Parse comma separated list
+                try:
+                    indices = [int(x.strip()) for x in response.split(',')]
+                    
+                    selected_files = []
+                    for idx in indices:
+                        if 1 <= idx <= len(svg_files):
+                            selected_files.append(os.path.basename(svg_files[idx-1]))
+                        # Ignore out of range or special menu options if mixed (though user shouldn't mix)
+                    
+                    if not selected_files:
+                        print("\nNo valid files selected.")
+                        self.pause()
+                        continue
+                        
+                    # Perform merge
+                    print(f"\nMerging {len(selected_files)} files...")
+                    
+                    # Generate output name
+                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                    output_name = f"merged_{timestamp}.svg"
+                    
+                    result = self.db.merge_svgs(plot_name, selected_files, output_name)
+                    
+                    if result:
+                        print(f"\n✓ Successfully merged {len(selected_files)} files into '{output_name}'")
+                    else:
+                        print("\n✗ Failed to merge files")
+                    
+                    self.pause()
+                    
+                except ValueError as e:
+                    print(f"\nInvalid input: {e}")
+                    self.pause()
+
     def run(self):
         """Start the interface."""
         # self.clear_screen()
