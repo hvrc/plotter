@@ -10,14 +10,14 @@
   "algorithm": {
     "current_algorithm": "waves",
     "waves": {
-      "output_width_inches": 4.1,
-      "output_height_inches": 5.8,
+      "output_width_inches": 5.8,
+      "output_height_inches": 4.1,
       "margin_inches": 0,
       "n_rows": 500,
       "contrast_power": 3,
       "amplitude_scale": 2.0,
       "frequency_scale": 2.5,
-      "white_threshold": 160,
+      "white_threshold": 200,
       "use_serpentine": true,
       "calc_dpi": 300,
       "draw_direction": "horizontal",
