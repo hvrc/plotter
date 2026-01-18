@@ -1,14 +1,14 @@
 {
   "plotter": {
-    "pen_pos_up": 200,
-    "pen_pos_down": 30,
+    "pen_pos_up": 80,
+    "pen_pos_down": 60,
     "auto_rotate": false,
     "speed_pendown": 25,
     "speed_penup": 110,
     "accel": 75
   },
   "algorithm": {
-    "current_algorithm": "waves",
+    "current_algorithm": "pixels",
     "waves": {
       "output_width_inches": 5.8,
       "output_height_inches": 4.1,

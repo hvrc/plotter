@@ -33,13 +33,12 @@ class SettingsManager:
             defaults_path: Path to defaults file (default: settings/default.json)
         """
         self.settings_path = Path(settings_path)
-        self.defaults_path = Path(defaults_path) if defaults_path else (self.settings_path.parent / "default.json")
         self.defaults = self._load_defaults()
         self.settings = self._deep_copy(self.defaults)
         
         # Ensure settings directory exists
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-        self.defaults_path.parent.mkdir(parents=True, exist_ok=True)
+        # self.defaults_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Load existing settings
         self.load()
@@ -101,13 +100,10 @@ class SettingsManager:
         return defaults
 
     def _load_defaults(self) -> Dict[str, Any]:
-        defaults = self._read_json(self.defaults_path)
-        if defaults:
-            return defaults
-
-        generated = self._generate_defaults()
-        self._write_json(self.defaults_path, generated)
-        return generated
+        # Generate defaults in-memory every time to ensure we have the latest 
+        # structure from all algorithms.
+        # per user request: do not create/write default.json
+        return self._generate_defaults()
     
     def _deep_copy(self, obj: Any) -> Any:
         """Deep copy a nested dict structure."""
